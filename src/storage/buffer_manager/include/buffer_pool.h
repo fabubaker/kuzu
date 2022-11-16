@@ -143,5 +143,27 @@ private:
     BufferManagerMetrics bmMetrics;
 };
 
+// Implements an mmap-based buffer pool, as described here:
+// http://db.in.tum.de/~freitag/papers/p29-neumann-cidr20.pdf
+class BufferPoolMmap {
+    friend class BufferManager;
+
+public:
+    BufferPoolMmap(uint64_t maxSize); // Page sizes are handled internally.
+
+private:
+    shared_ptr<spdlog::logger> logger;
+
+    // Two size classes of 4KB and 256KB respectively.
+    vector<unique_ptr<Frame>> defaultPageBufferCache;
+    vector<unique_ptr<Frame>> largePageBufferCache;
+
+    atomic<uint64_t> clockHand;
+    page_idx_t numDefaultFrames;
+    page_idx_t numLargeFrames;
+
+    BufferManagerMetrics bmMetrics;
+};
+
 } // namespace storage
 } // namespace kuzu

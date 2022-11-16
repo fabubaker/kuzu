@@ -1,4 +1,4 @@
-
+#include <sys/mman.h>
 #include "spdlog/spdlog.h"
 
 #include "src/common/include/configs.h"
@@ -286,6 +286,39 @@ void BufferPool::unpinWithoutAcquiringPageLock(FileHandle& fileHandle, page_idx_
     // `count` is the value of `pinCount` before sub.
     auto count = frame->pinCount.fetch_sub(1);
     assert(count >= 1);
+}
+
+// --- BufferPoolMmap ---
+
+BufferPoolMmap::BufferPoolMmap(uint64_t maxSize)
+        : logger{LoggerUtils::getOrCreateLogger("buffer_manager")}, clockHand{0},
+          numDefaultFrames((page_idx_t)(ceil((double)maxSize / (double)DEFAULT_PAGE_SIZE))),
+          numLargeFrames((page_idx_t)(ceil((double)maxSize / (double)LARGE_PAGE_SIZE))) {
+    // Call mmap to create two virtual memory regions for each of the two size classes.
+    int prot = PROT_READ | PROT_WRITE;
+    int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+    uint8_t *default_mmap = (uint8_t *) mmap(NULL, maxSize, prot, flags, -1, 0);
+    uint8_t *large_mmap = (uint8_t *) mmap(NULL, maxSize, prot, flags, -1, 0);
+
+    uint8_t* buffer;
+
+    // Create default-sized frames.
+    for (auto i = 0u; i < numDefaultFrames; i++) {
+        buffer = default_mmap + (i * DEFAULT_PAGE_SIZE);
+        defaultPageBufferCache.emplace_back(make_unique<Frame>(buffer));
+    }
+
+    // Create large-sized frames.
+    for (auto i = 0u; i < numLargeFrames; i++) {
+        buffer = large_mmap + (i * LARGE_PAGE_SIZE);
+        largePageBufferCache.emplace_back(make_unique<Frame>(buffer));
+    }
+
+    logger->info("Initializing mmap-based Buffer Pool.");
+    logger->info("UmbraBufferPool Size {}B, #{}byte-pages {} #{}byte-pages {}.", maxSize,
+                 DEFAULT_PAGE_SIZE, ceil((double)maxSize / (double)DEFAULT_PAGE_SIZE),
+                 LARGE_PAGE_SIZE, ceil((double)maxSize / (double)LARGE_PAGE_SIZE));
+    logger->info("Done Initializing Buffer Pool.");
 }
 
 } // namespace storage
