@@ -16,6 +16,11 @@ Frame::Frame(uint64_t pageSize) : frameLock{ATOMIC_FLAG_INIT} {
     buffer = make_unique<uint8_t[]>(pageSize);
 }
 
+Frame::Frame(uint8_t* buffer) : frameLock{ATOMIC_FLAG_INIT} {
+    resetFrameWithoutLock();
+    mmapBuffer = buffer;
+}
+
 Frame::~Frame() noexcept(false) {
     auto count = pinCount.load();
     if (0 != count && -1u != count) {

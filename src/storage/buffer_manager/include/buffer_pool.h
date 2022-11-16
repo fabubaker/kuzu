@@ -41,6 +41,7 @@ class Frame {
 
 public:
     explicit Frame(uint64_t pageSize);
+    Frame(uint8_t *buffer); // Use this for Umbra BM
     ~Frame() noexcept(false);
 
 private:
@@ -59,6 +60,12 @@ private:
     bool recentlyAccessed;
     bool isDirty;
     unique_ptr<uint8_t[]> buffer;
+
+    // TODO: It seems non-trivial to implement a deleter for mmap-based buffers.
+    // Wrap this in a unique_ptr later. This may not even be a problem since
+    // Frames never get destroyed anyways.
+    uint8_t *mmapBuffer{nullptr};
+
     atomic_flag frameLock;
 };
 
