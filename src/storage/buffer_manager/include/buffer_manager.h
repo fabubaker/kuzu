@@ -107,6 +107,7 @@ private:
     shared_ptr<spdlog::logger> logger;
     unique_ptr<BufferPool> bufferPoolDefaultPages;
     unique_ptr<BufferPool> bufferPoolLargePages;
+    unique_ptr<BufferPoolMmap> bufferPoolMmap;
 };
 
 } // namespace storage
