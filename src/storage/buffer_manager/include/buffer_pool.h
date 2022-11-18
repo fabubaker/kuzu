@@ -158,7 +158,6 @@ private:
     vector<unique_ptr<Frame>> defaultPageBufferCache;
     vector<unique_ptr<Frame>> largePageBufferCache;
 
-    atomic<uint64_t> clockHand;
     page_idx_t numDefaultFrames;
     page_idx_t numLargeFrames;
 

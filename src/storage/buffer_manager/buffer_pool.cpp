@@ -291,7 +291,7 @@ void BufferPool::unpinWithoutAcquiringPageLock(FileHandle& fileHandle, page_idx_
 // --- BufferPoolMmap ---
 
 BufferPoolMmap::BufferPoolMmap(uint64_t maxSize)
-        : logger{LoggerUtils::getOrCreateLogger("buffer_manager")}, clockHand{0},
+        : logger{LoggerUtils::getOrCreateLogger("buffer_manager")},
           numDefaultFrames((page_idx_t)(ceil((double)maxSize / (double)DEFAULT_PAGE_SIZE))),
           numLargeFrames((page_idx_t)(ceil((double)maxSize / (double)LARGE_PAGE_SIZE))) {
     // Call mmap to create two virtual memory regions for each of the two size classes.
