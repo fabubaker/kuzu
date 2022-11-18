@@ -39,6 +39,7 @@ struct BufferManagerMetrics {
 // Buffer Manager.
 class Frame {
     friend class BufferPool;
+    friend class BufferPoolMmap;
 
 public:
     explicit Frame(uint64_t pageSize);
