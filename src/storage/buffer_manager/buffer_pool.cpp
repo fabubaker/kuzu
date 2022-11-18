@@ -294,7 +294,8 @@ BufferPoolMmap::BufferPoolMmap(uint64_t maxSize)
         : logger{LoggerUtils::getOrCreateLogger("buffer_manager")},
           numDefaultFrames((page_idx_t)(ceil((double)maxSize / (double)DEFAULT_PAGE_SIZE))),
           numLargeFrames((page_idx_t)(ceil((double)maxSize / (double)LARGE_PAGE_SIZE))),
-          evictionQueue(make_unique<moodycamel::ConcurrentQueue<EvictionQueueNode>>()) {
+          evictionQueue(make_unique<moodycamel::ConcurrentQueue<EvictionQueueNode>>()),
+          currentMemory(0), maxMemory(maxSize) {
     // Call mmap to create two virtual memory regions for each of the two size classes.
     int prot = PROT_READ | PROT_WRITE;
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;

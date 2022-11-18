@@ -173,6 +173,9 @@ private:
 
     // Pages with a pinCount of 0 are placed onto this queue.
     unique_ptr<moodycamel::ConcurrentQueue<EvictionQueueNode>> evictionQueue;
+
+    atomic<size_t> currentMemory;
+    atomic<size_t> maxMemory;
 };
 
 } // namespace storage
