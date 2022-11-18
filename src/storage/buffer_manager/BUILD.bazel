@@ -28,6 +28,7 @@ cc_library(
     hdrs = [
         "include/buffer_manager.h",
         "include/buffer_pool.h",
+        "include/concurrentqueue.h"
     ],
     visibility = ["//visibility:public"],
     deps = [
