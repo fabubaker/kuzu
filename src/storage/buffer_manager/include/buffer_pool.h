@@ -172,7 +172,7 @@ private:
     BufferManagerMetrics bmMetrics;
 
     // Pages with a pinCount of 0 are placed onto this queue.
-    moodycamel::ConcurrentQueue<EvictionQueueNode> evictionQueue;
+    unique_ptr<moodycamel::ConcurrentQueue<EvictionQueueNode>> evictionQueue;
 };
 
 } // namespace storage
