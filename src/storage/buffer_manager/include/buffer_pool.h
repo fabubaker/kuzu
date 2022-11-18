@@ -3,6 +3,7 @@
 #include <mutex>
 #include <vector>
 
+#include "concurrentqueue.h"
 #include "nlohmann/json.hpp"
 
 #include "src/common/include/metric.h"
@@ -143,6 +144,13 @@ private:
     BufferManagerMetrics bmMetrics;
 };
 
+// Eviction queue node
+struct EvictionQueueNode {
+    page_idx_t frameIdx;
+    FileHandle *fileHandle;
+    page_idx_t pageIdx;
+};
+
 // Implements an mmap-based buffer pool, as described here:
 // http://db.in.tum.de/~freitag/papers/p29-neumann-cidr20.pdf
 class BufferPoolMmap {
@@ -162,6 +170,9 @@ private:
     page_idx_t numLargeFrames;
 
     BufferManagerMetrics bmMetrics;
+
+    // Pages with a pinCount of 0 are placed onto this queue.
+    moodycamel::ConcurrentQueue<EvictionQueueNode> evictionQueue;
 };
 
 } // namespace storage
