@@ -35,6 +35,7 @@ class BufferPool;
 // called concurrently. The caller needs to synchronize these calls.
 class FileHandle {
     friend class BufferPool;
+    friend class BufferPoolMmap;
 
 public:
     constexpr static uint8_t isLargePagedMask{0b0000'0001}; // represents 1st least sig. bit (LSB)
