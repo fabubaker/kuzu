@@ -11,12 +11,12 @@ using namespace kuzu::common;
 namespace kuzu {
 namespace storage {
 
-Frame::Frame(uint64_t pageSize) : frameLock{ATOMIC_FLAG_INIT} {
+Frame::Frame(uint64_t pageSize) : frameLock{ATOMIC_FLAG_INIT}, pageSize{pageSize} {
     resetFrameWithoutLock();
     buffer = make_unique<uint8_t[]>(pageSize);
 }
 
-Frame::Frame(uint8_t* buffer) : frameLock{ATOMIC_FLAG_INIT} {
+Frame::Frame(uint64_t pageSize, uint8_t* buffer) : frameLock{ATOMIC_FLAG_INIT}, pageSize{pageSize} {
     resetFrameWithoutLock();
     mmapBuffer = buffer;
 }
@@ -307,13 +307,13 @@ BufferPoolMmap::BufferPoolMmap(uint64_t maxSize)
     // Create default-sized frames.
     for (auto i = 0u; i < numDefaultFrames; i++) {
         buffer = default_mmap + (i * DEFAULT_PAGE_SIZE);
-        defaultPageBufferCache.emplace_back(make_unique<Frame>(buffer));
+        defaultPageBufferCache.emplace_back(make_unique<Frame>(DEFAULT_PAGE_SIZE, buffer));
     }
 
     // Create large-sized frames.
     for (auto i = 0u; i < numLargeFrames; i++) {
         buffer = large_mmap + (i * LARGE_PAGE_SIZE);
-        largePageBufferCache.emplace_back(make_unique<Frame>(buffer));
+        largePageBufferCache.emplace_back(make_unique<Frame>(LARGE_PAGE_SIZE, buffer));
     }
 
     logger->info("Initializing mmap-based Buffer Pool.");
