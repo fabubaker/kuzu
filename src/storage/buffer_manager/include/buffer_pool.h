@@ -51,6 +51,7 @@ private:
     bool acquireFrameLock(bool block);
     void releaseFrameLock() { frameLock.clear(); }
     void setIsDirty(bool _isDirty) { isDirty = _isDirty; }
+    void releaseMemory();
 
 private:
     // fileHandlePtr and pageIdx identify the file and the page in file whose data the buffer is

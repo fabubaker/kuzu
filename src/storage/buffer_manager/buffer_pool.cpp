@@ -29,6 +29,16 @@ Frame::~Frame() noexcept(false) {
     }
 }
 
+void Frame::releaseMemory() {
+    int error = madvise(mmapBuffer, pageSize, MADV_DONTNEED);
+    if (error) {
+        throw BufferManagerException("madvise failed with error code " +
+                                            to_string(error) +
+                                            ": " +
+                                            std::strerror(error));
+    }
+}
+
 void Frame::resetFrameWithoutLock() {
     fileHandlePtr = -1u;
     pageIdx = -1u;
