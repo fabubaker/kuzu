@@ -390,7 +390,7 @@ void BufferPoolMmap::flushIfDirty(const unique_ptr<Frame>& frame) {
     auto pageIdxInFrame = frame->pageIdx.load();
     if (frame->isDirty) {
         bmMetrics.numDirtyPageWriteIO += 1;
-        fileHandleInFrame->writePage(frame->buffer.get(), pageIdxInFrame);
+        fileHandleInFrame->writePage(frame->mmapBuffer, pageIdxInFrame);
     }
 }
 
@@ -408,7 +408,7 @@ void BufferPoolMmap::readNewPageIntoFrame(
     frame.pageIdx.store(pageIdx);
     frame.fileHandlePtr.store(reinterpret_cast<uint64_t>(&fileHandle));
     if (!doNotReadFromFile) {
-        fileHandle.readPage(frame.buffer.get(), pageIdx);
+        fileHandle.readPage(frame.mmapBuffer, pageIdx);
     }
 }
 
@@ -445,7 +445,7 @@ uint8_t* BufferPoolMmap::pinWithoutAcquiringPageLock(
         }
     }
     bmMetrics.numPins += 1;
-    return bufferCache[fileHandle.getFrameIdx(pageIdx)]->buffer.get();
+    return bufferCache[fileHandle.getFrameIdx(pageIdx)]->mmapBuffer;
 }
 
 void BufferPoolMmap::setPinnedPageDirty(FileHandle& fileHandle, page_idx_t pageIdx) {
