@@ -162,6 +162,35 @@ class BufferPoolMmap {
 public:
     BufferPoolMmap(uint64_t maxSize); // Page sizes are handled internally.
 
+    uint8_t* pin(FileHandle& fileHandle, page_idx_t pageIdx);
+
+    // Pins a new page that has been added to the file. This means that the BufferManager does not
+    // need to read the page from the file for now. Ensuring that the given pageIdx is new is the
+    // responsibility of the caller.
+    uint8_t* pinWithoutReadingFromFile(FileHandle& fileHandle, page_idx_t pageIdx);
+
+    uint8_t* pinWithoutAcquiringPageLock(
+            FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile);
+
+    void setPinnedPageDirty(FileHandle& fileHandle, page_idx_t pageIdx);
+
+private:
+    uint8_t* pin(FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile);
+
+    page_idx_t claimAFrame(FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile);
+
+    bool fillEmptyFrame(
+            page_idx_t frameIdx, FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile);
+
+    bool tryEvict(
+            page_idx_t frameIdx, FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile);
+
+    void clearFrameAndUnswizzleWithoutLock(
+            const unique_ptr<Frame>& frame, FileHandle& fileHandleInFrame, page_idx_t pageIdxInFrame);
+    void readNewPageIntoFrame(
+            Frame& frame, FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile);
+
+    void flushIfDirty(const unique_ptr<Frame>& frame);
 private:
     shared_ptr<spdlog::logger> logger;
 

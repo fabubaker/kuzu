@@ -298,7 +298,9 @@ void BufferPool::unpinWithoutAcquiringPageLock(FileHandle& fileHandle, page_idx_
     assert(count >= 1);
 }
 
-// --- BufferPoolMmap ---
+/*************************/
+// --- BufferPoolMmap --- //
+/*************************/
 
 BufferPoolMmap::BufferPoolMmap(uint64_t maxSize)
         : logger{LoggerUtils::getOrCreateLogger("buffer_manager")},
@@ -331,6 +333,203 @@ BufferPoolMmap::BufferPoolMmap(uint64_t maxSize)
                  DEFAULT_PAGE_SIZE, ceil((double)maxSize / (double)DEFAULT_PAGE_SIZE),
                  LARGE_PAGE_SIZE, ceil((double)maxSize / (double)LARGE_PAGE_SIZE));
     logger->info("Done Initializing Buffer Pool.");
+}
+
+// Pass pageIdx = -1u to prevent a new page from being read into this frame
+bool BufferPoolMmap::tryEvict(
+        page_idx_t frameIdx, FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile) {
+    vector<unique_ptr<Frame>> &bufferCache = fileHandle.isLargePaged() ? largePageBufferCache
+                                                                       : defaultPageBufferCache;
+    size_t extraMemory = fileHandle.isLargePaged() ? LARGE_PAGE_SIZE : DEFAULT_PAGE_SIZE;
+
+    auto& frame = bufferCache[frameIdx];
+    if (frame->recentlyAccessed) {
+        frame->recentlyAccessed = false;
+        bmMetrics.numRecentlyAccessedWalkover += 1;
+        return false;
+    }
+    if (!frame->acquireFrameLock(false)) {
+        return false;
+    }
+    auto pageIdxInFrame = frame->pageIdx.load();
+    auto fileHandleInFrame = reinterpret_cast<FileHandle*>(frame->fileHandlePtr.load());
+    if (!fileHandleInFrame->acquirePageLock(pageIdxInFrame, false)) {
+        bmMetrics.numEvictFails += 1;
+        frame->releaseFrameLock();
+        return false;
+    }
+    // We check pinCount again after acquiring the lock on page currently residing in the frame. At
+    // this point in time, no other thread can change the pinCount.
+    if (0u != frame->pinCount.load()) {
+        bmMetrics.numEvictFails += 1;
+        fileHandleInFrame->releasePageLock(pageIdxInFrame);
+        frame->releaseFrameLock();
+        return false;
+    }
+    // Else, flush out the frame into the file page if the frame is dirty. Then remove the page from
+    // the frame and release the lock on it.
+    flushIfDirty(frame);
+    clearFrameAndUnswizzleWithoutLock(frame, *fileHandleInFrame, pageIdxInFrame);
+    fileHandleInFrame->releasePageLock(pageIdxInFrame);
+    // Update the frame information and release the lock on frame.
+    if (pageIdx != -1u) {
+        readNewPageIntoFrame(*frame, fileHandle, pageIdx, doNotReadFromFile);
+    } else {
+        // Frame is not being reused, decrease currentMemory and call releaseMemory
+        // to free physical memory occupied by the frame (using madvise).
+        currentMemory -= extraMemory;
+        frame->releaseMemory();
+    }
+    frame->releaseFrameLock();
+    bmMetrics.numEvicts += 1;
+    return true;
+}
+
+void BufferPoolMmap::flushIfDirty(const unique_ptr<Frame>& frame) {
+    auto fileHandleInFrame = reinterpret_cast<FileHandle*>(frame->fileHandlePtr.load());
+    auto pageIdxInFrame = frame->pageIdx.load();
+    if (frame->isDirty) {
+        bmMetrics.numDirtyPageWriteIO += 1;
+        fileHandleInFrame->writePage(frame->buffer.get(), pageIdxInFrame);
+    }
+}
+
+void BufferPoolMmap::clearFrameAndUnswizzleWithoutLock(
+        const unique_ptr<Frame>& frame, FileHandle& fileHandleInFrame, page_idx_t pageIdxInFrame) {
+    frame->resetFrameWithoutLock();
+    fileHandleInFrame.unswizzle(pageIdxInFrame);
+}
+
+void BufferPoolMmap::readNewPageIntoFrame(
+        Frame& frame, FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile) {
+    frame.pinCount.store(1);
+    frame.recentlyAccessed = true;
+    frame.isDirty = false;
+    frame.pageIdx.store(pageIdx);
+    frame.fileHandlePtr.store(reinterpret_cast<uint64_t>(&fileHandle));
+    if (!doNotReadFromFile) {
+        fileHandle.readPage(frame.buffer.get(), pageIdx);
+    }
+}
+
+uint8_t* BufferPoolMmap::pin(FileHandle& fileHandle, page_idx_t pageIdx) {
+    return pin(fileHandle, pageIdx, false /* read page from file */);
+}
+
+uint8_t* BufferPoolMmap::pinWithoutReadingFromFile(FileHandle& fileHandle, page_idx_t pageIdx) {
+    return pin(fileHandle, pageIdx, true /* do not read page from file */);
+}
+
+uint8_t* BufferPoolMmap::pin(FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile) {
+    fileHandle.acquirePageLock(pageIdx, true /*block*/);
+    auto retVal = pinWithoutAcquiringPageLock(fileHandle, pageIdx, doNotReadFromFile);
+    fileHandle.releasePageLock(pageIdx);
+    return retVal;
+}
+
+uint8_t* BufferPoolMmap::pinWithoutAcquiringPageLock(
+        FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile) {
+    vector<unique_ptr<Frame>> &bufferCache = fileHandle.isLargePaged() ? largePageBufferCache
+                                                                       : defaultPageBufferCache;
+    auto frameIdx = fileHandle.getFrameIdx(pageIdx);
+    if (FileHandle::isAFrame(frameIdx)) {
+        auto& frame = bufferCache[frameIdx];
+        frame->pinCount.fetch_add(1);
+        frame->recentlyAccessed = true;
+        //        bmMetrics.numCacheHit += 1;
+    } else {
+        frameIdx = claimAFrame(fileHandle, pageIdx, doNotReadFromFile);
+        fileHandle.swizzle(pageIdx, frameIdx);
+        if (!doNotReadFromFile) {
+            bmMetrics.numCacheMiss += 1;
+        }
+    }
+    bmMetrics.numPins += 1;
+    return bufferCache[fileHandle.getFrameIdx(pageIdx)]->buffer.get();
+}
+
+void BufferPoolMmap::setPinnedPageDirty(FileHandle& fileHandle, page_idx_t pageIdx) {
+    vector<unique_ptr<Frame>> &bufferCache = fileHandle.isLargePaged() ? largePageBufferCache
+                                                                       : defaultPageBufferCache;
+
+    fileHandle.acquirePageLock(pageIdx, true /*block*/);
+    auto frameIdx = fileHandle.getFrameIdx(pageIdx);
+    if (!FileHandle::isAFrame((frameIdx)) || (bufferCache[frameIdx]->pinCount.load() < 1)) {
+        fileHandle.releasePageLock(pageIdx);
+        throw BufferManagerException("If a page is not in memory or is not pinned, cannot set "
+                                     "it to isDirty = true.filePath: " +
+                                     fileHandle.fileInfo->path + " pageIdx: " + to_string(pageIdx) +
+                                     ".");
+    }
+    bufferCache[frameIdx]->setIsDirty(true /* isDirty */);
+    fileHandle.releasePageLock(pageIdx);
+}
+
+
+page_idx_t BufferPoolMmap::claimAFrame(FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile) {
+    vector<unique_ptr<Frame>> &bufferCache = fileHandle.isLargePaged() ? largePageBufferCache
+                                                                      : defaultPageBufferCache;
+    size_t extraMemory = fileHandle.isLargePaged() ? LARGE_PAGE_SIZE : DEFAULT_PAGE_SIZE;
+
+    // Evict pages until there's enough memory
+    EvictionQueueNode node;
+    while(currentMemory + extraMemory > maxMemory) {
+        if (!evictionQueue->try_dequeue(node)) {
+            // There aren't frames that can be evicted to make space for extraMemory.
+            throw BufferManagerException("Cannot find a frame to evict from.");
+        }
+
+        auto& frame = bufferCache[node.frameIdx];
+        auto pinCount = frame->pinCount.load();
+
+        // If the victim frame has the same pageSize as the requested frame, reuse it.
+        if (0u == pinCount && frame->pageSize == extraMemory) {
+            if (tryEvict(node.frameIdx, fileHandle, pageIdx, doNotReadFromFile)) {
+                return node.frameIdx;
+            } else {
+                // Unable to evict this frame, keep going through the queue
+                continue;
+            }
+        }
+
+        // Different sizes, evict but don't reuse because of size mismatch
+        if (0u == pinCount) {
+            // pageIdx is -1u since we don't want a new page to be read into this frame
+            tryEvict(node.frameIdx, fileHandle, -1u, false);
+            continue; // Keep going regardless of whether eviction was successful
+        }
+    }
+
+    // Go through bufferCache and find frame with pinCount == -1 to fill page with
+    auto numFrames = fileHandle.isLargePaged() ? numLargeFrames : numDefaultFrames;
+    // Starting with frameIdx = 0 may be inefficient, since it is very likely that the
+    // first few frames are already taken.
+    for (auto frameIdx = 0u; frameIdx < numFrames; ++frameIdx) {
+        auto pinCount = bufferCache[frameIdx]->pinCount.load();
+
+        if (-1u == pinCount && fillEmptyFrame(frameIdx, fileHandle, pageIdx, doNotReadFromFile)) {
+            return frameIdx;
+        }
+    }
+
+    throw BufferManagerException("Cannot find a frame to claim.");
+}
+
+bool BufferPoolMmap::fillEmptyFrame(
+        page_idx_t frameIdx, FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile) {
+    vector<unique_ptr<Frame>> &bufferCache = fileHandle.isLargePaged() ? largePageBufferCache
+                                                                       : defaultPageBufferCache;
+    auto& frame = bufferCache[frameIdx];
+    if (!frame->acquireFrameLock(false)) {
+        return false;
+    }
+    if (-1u == frame->pinCount.load()) {
+        readNewPageIntoFrame(*frame, fileHandle, pageIdx, doNotReadFromFile);
+        frame->releaseFrameLock();
+        return true;
+    }
+    frame->releaseFrameLock();
+    return false;
 }
 
 } // namespace storage
