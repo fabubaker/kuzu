@@ -13,8 +13,7 @@ namespace storage {
 
 BufferManager::BufferManager(uint64_t maxSizeForDefaultPagePool, uint64_t maxSizeForLargePagePool)
     : logger{LoggerUtils::getOrCreateLogger("buffer_manager")},
-      bufferPoolDefaultPages(make_unique<BufferPool>(DEFAULT_PAGE_SIZE, maxSizeForDefaultPagePool)),
-      bufferPoolLargePages(make_unique<BufferPool>(LARGE_PAGE_SIZE, maxSizeForLargePagePool)) {
+      bufferPoolMmap(make_unique<BufferPoolMmap>(maxSizeForDefaultPagePool + maxSizeForLargePagePool)) {
     logger->info("Done Initializing Buffer Manager.");
 }
 
@@ -23,8 +22,7 @@ BufferManager::~BufferManager() {
 }
 
 void BufferManager::resize(uint64_t newSizeForDefaultPagePool, uint64_t newSizeForLargePagePool) {
-    bufferPoolDefaultPages->resize(newSizeForDefaultPagePool);
-    bufferPoolLargePages->resize(newSizeForLargePagePool);
+    throw BufferManagerException("Unsupported operation resize");
 }
 
 // Important Note: Pin returns a raw pointer to the frame. This is potentially very dangerous and
@@ -37,8 +35,7 @@ void BufferManager::resize(uint64_t newSizeForDefaultPagePool, uint64_t newSizeF
 // (3) If multiple threads are writing to the page, they should coordinate separately because they
 // both get access to the same piece of memory.
 uint8_t* BufferManager::pin(FileHandle& fileHandle, page_idx_t pageIdx) {
-    return fileHandle.isLargePaged() ? bufferPoolLargePages->pin(fileHandle, pageIdx) :
-                                       bufferPoolDefaultPages->pin(fileHandle, pageIdx);
+    return bufferPoolMmap->pin(fileHandle, pageIdx);
 }
 
 // Important Note: This function will pin a page but if the page was not yet in a frame, it will
@@ -50,45 +47,33 @@ uint8_t* BufferManager::pin(FileHandle& fileHandle, page_idx_t pageIdx) {
 // (with serious side effects). See the detailed explanation in FileHandle::addNewPage() for
 // details.
 uint8_t* BufferManager::pinWithoutReadingFromFile(FileHandle& fileHandle, page_idx_t pageIdx) {
-    return fileHandle.isLargePaged() ?
-               bufferPoolLargePages->pinWithoutReadingFromFile(fileHandle, pageIdx) :
-               bufferPoolDefaultPages->pinWithoutReadingFromFile(fileHandle, pageIdx);
+    return bufferPoolMmap->pinWithoutReadingFromFile(fileHandle, pageIdx);
 }
 
 // Important Note: The caller should make sure that they have pinned the page before calling this.
 void BufferManager::setPinnedPageDirty(FileHandle& fileHandle, page_idx_t pageIdx) {
-    fileHandle.isLargePaged() ? bufferPoolLargePages->setPinnedPageDirty(fileHandle, pageIdx) :
-                                bufferPoolDefaultPages->setPinnedPageDirty(fileHandle, pageIdx);
+    return bufferPoolMmap->setPinnedPageDirty(fileHandle, pageIdx);
 }
 
 void BufferManager::unpin(FileHandle& fileHandle, page_idx_t pageIdx) {
-    return fileHandle.isLargePaged() ? bufferPoolLargePages->unpin(fileHandle, pageIdx) :
-                                       bufferPoolDefaultPages->unpin(fileHandle, pageIdx);
+    return;
 }
 
 void BufferManager::removeFilePagesFromFrames(FileHandle& fileHandle) {
-    fileHandle.isLargePaged() ? bufferPoolLargePages->removeFilePagesFromFrames(fileHandle) :
-                                bufferPoolDefaultPages->removeFilePagesFromFrames(fileHandle);
+    throw BufferManagerException("Unsupported operation removeFilePagesFromFrames");
 }
 
 void BufferManager::flushAllDirtyPagesInFrames(FileHandle& fileHandle) {
-    fileHandle.isLargePaged() ? bufferPoolLargePages->flushAllDirtyPagesInFrames(fileHandle) :
-                                bufferPoolDefaultPages->flushAllDirtyPagesInFrames(fileHandle);
+    throw BufferManagerException("Unsupported operation flushAllDirtyPagesInFrames");
 }
 
 void BufferManager::updateFrameIfPageIsInFrameWithoutPageOrFrameLock(
     FileHandle& fileHandle, uint8_t* newPage, page_idx_t pageIdx) {
-    fileHandle.isLargePaged() ?
-        bufferPoolLargePages->updateFrameIfPageIsInFrameWithoutPageOrFrameLock(
-            fileHandle, newPage, pageIdx) :
-        bufferPoolDefaultPages->updateFrameIfPageIsInFrameWithoutPageOrFrameLock(
-            fileHandle, newPage, pageIdx);
+    throw BufferManagerException("Unsupported operation updateFrameIfPageIsInFrameWithoutPageOrFrameLock");
 }
 
 void BufferManager::removePageFromFrameIfNecessary(FileHandle& fileHandle, page_idx_t pageIdx) {
-    fileHandle.isLargePaged() ?
-        bufferPoolLargePages->removePageFromFrameWithoutFlushingIfNecessary(fileHandle, pageIdx) :
-        bufferPoolDefaultPages->removePageFromFrameWithoutFlushingIfNecessary(fileHandle, pageIdx);
+    throw BufferManagerException("Unsupported operation removePageFromFrameIfNecessary");
 }
 
 unique_ptr<nlohmann::json> BufferManager::debugInfo() {
