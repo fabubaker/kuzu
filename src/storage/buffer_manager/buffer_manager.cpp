@@ -56,24 +56,24 @@ void BufferManager::setPinnedPageDirty(FileHandle& fileHandle, page_idx_t pageId
 }
 
 void BufferManager::unpin(FileHandle& fileHandle, page_idx_t pageIdx) {
-    return;
+    return bufferPoolMmap->unpin(fileHandle, pageIdx);
 }
 
 void BufferManager::removeFilePagesFromFrames(FileHandle& fileHandle) {
-    throw BufferManagerException("Unsupported operation removeFilePagesFromFrames");
+    return bufferPoolMmap->removeFilePagesFromFrames(fileHandle);
 }
 
 void BufferManager::flushAllDirtyPagesInFrames(FileHandle& fileHandle) {
-    throw BufferManagerException("Unsupported operation flushAllDirtyPagesInFrames");
+    return bufferPoolMmap->flushAllDirtyPagesInFrames(fileHandle);
 }
 
 void BufferManager::updateFrameIfPageIsInFrameWithoutPageOrFrameLock(
     FileHandle& fileHandle, uint8_t* newPage, page_idx_t pageIdx) {
-    throw BufferManagerException("Unsupported operation updateFrameIfPageIsInFrameWithoutPageOrFrameLock");
+    return bufferPoolMmap->updateFrameIfPageIsInFrameWithoutPageOrFrameLock(fileHandle, newPage, pageIdx);
 }
 
 void BufferManager::removePageFromFrameIfNecessary(FileHandle& fileHandle, page_idx_t pageIdx) {
-    throw BufferManagerException("Unsupported operation removePageFromFrameIfNecessary");
+    return bufferPoolMmap->removePageFromFrameWithoutFlushingIfNecessary(fileHandle, pageIdx);
 }
 
 unique_ptr<nlohmann::json> BufferManager::debugInfo() {

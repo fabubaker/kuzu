@@ -420,6 +420,53 @@ uint8_t* BufferPoolMmap::pinWithoutReadingFromFile(FileHandle& fileHandle, page_
     return pin(fileHandle, pageIdx, true /* do not read page from file */);
 }
 
+void BufferPoolMmap::removeFilePagesFromFrames(FileHandle& fileHandle) {
+    for (auto pageIdx = 0u; pageIdx < fileHandle.numPages; ++pageIdx) {
+        removePageFromFrame(fileHandle, pageIdx, false /* do not flush */);
+    }
+}
+
+void BufferPoolMmap::removePageFromFrame(FileHandle& fileHandle, page_idx_t pageIdx, bool shouldFlush) {
+    fileHandle.acquirePageLock(pageIdx, true /*block*/);
+    auto frameIdx = fileHandle.getFrameIdx(pageIdx);
+    vector<unique_ptr<Frame>> &bufferCache = fileHandle.isLargePaged() ? largePageBufferCache
+                                                                       : defaultPageBufferCache;
+    if (FileHandle::isAFrame(frameIdx)) {
+        auto& frame = bufferCache[frameIdx];
+        frame->acquireFrameLock(true /* block */);
+        if (shouldFlush) {
+            flushIfDirty(frame);
+        }
+        clearFrameAndUnswizzleWithoutLock(frame, fileHandle, pageIdx);
+        frame->releaseFrameLock();
+    }
+    fileHandle.releasePageLock(pageIdx);
+}
+
+void BufferPoolMmap::removePageFromFrameWithoutFlushingIfNecessary(
+        FileHandle& fileHandle, page_idx_t pageIdx) {
+    if (pageIdx >= fileHandle.numPages) {
+        return;
+    }
+    removePageFromFrame(fileHandle, pageIdx, false /* do not flush */);
+}
+
+void BufferPoolMmap::flushAllDirtyPagesInFrames(FileHandle& fileHandle) {
+    for (auto pageIdx = 0u; pageIdx < fileHandle.numPages; ++pageIdx) {
+        removePageFromFrame(fileHandle, pageIdx, true /* flush */);
+    }
+}
+
+void BufferPoolMmap::updateFrameIfPageIsInFrameWithoutPageOrFrameLock(
+        FileHandle& fileHandle, uint8_t* newPage, page_idx_t pageIdx) {
+    auto frameIdx = fileHandle.getFrameIdx(pageIdx);
+    vector<unique_ptr<Frame>> &bufferCache = fileHandle.isLargePaged() ? largePageBufferCache
+                                                                       : defaultPageBufferCache;
+    if (FileHandle::isAFrame(frameIdx)) {
+        memcpy(bufferCache[frameIdx]->mmapBuffer, newPage, DEFAULT_PAGE_SIZE);
+    }
+}
+
 uint8_t* BufferPoolMmap::pin(FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile) {
     fileHandle.acquirePageLock(pageIdx, true /*block*/);
     auto retVal = pinWithoutAcquiringPageLock(fileHandle, pageIdx, doNotReadFromFile);
@@ -530,6 +577,21 @@ bool BufferPoolMmap::fillEmptyFrame(
     }
     frame->releaseFrameLock();
     return false;
+}
+
+void BufferPoolMmap::unpin(FileHandle& fileHandle, page_idx_t pageIdx) {
+    fileHandle.acquirePageLock(pageIdx, true /*block*/);
+    unpinWithoutAcquiringPageLock(fileHandle, pageIdx);
+    fileHandle.releasePageLock(pageIdx);
+}
+
+void BufferPoolMmap::unpinWithoutAcquiringPageLock(FileHandle& fileHandle, page_idx_t pageIdx) {
+    vector<unique_ptr<Frame>> &bufferCache = fileHandle.isLargePaged() ? largePageBufferCache
+                                                                       : defaultPageBufferCache;
+    auto& frame = bufferCache[fileHandle.getFrameIdx(pageIdx)];
+    // `count` is the value of `pinCount` before sub.
+    auto count = frame->pinCount.fetch_sub(1);
+    assert(count >= 1);
 }
 
 } // namespace storage

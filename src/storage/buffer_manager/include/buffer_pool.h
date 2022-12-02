@@ -174,6 +174,21 @@ public:
 
     void setPinnedPageDirty(FileHandle& fileHandle, page_idx_t pageIdx);
 
+    // The function assumes that the requested page is already pinned.
+    void unpin(FileHandle& fileHandle, page_idx_t pageIdx);
+
+    void unpinWithoutAcquiringPageLock(FileHandle& fileHandle, page_idx_t pageIdx);
+
+    // Note: These two functions that remove pages from frames is not designed for concurrency and
+    // therefore not tested under concurrency. If this is called while other threads are accessing
+    // the BM, it should work safely but this is not tested.
+    void removeFilePagesFromFrames(FileHandle& fileHandle);
+
+    void flushAllDirtyPagesInFrames(FileHandle& fileHandle);
+    void updateFrameIfPageIsInFrameWithoutPageOrFrameLock(
+            FileHandle& fileHandle, uint8_t* newPage, page_idx_t pageIdx);
+
+    void removePageFromFrameWithoutFlushingIfNecessary(FileHandle& fileHandle, page_idx_t pageIdx);
 private:
     uint8_t* pin(FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile);
 
@@ -191,6 +206,8 @@ private:
             Frame& frame, FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile);
 
     void flushIfDirty(const unique_ptr<Frame>& frame);
+
+    void removePageFromFrame(FileHandle& fileHandle, page_idx_t pageIdx, bool shouldFlush);
 private:
     shared_ptr<spdlog::logger> logger;
 
