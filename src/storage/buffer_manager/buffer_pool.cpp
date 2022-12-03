@@ -566,12 +566,14 @@ bool BufferPoolMmap::fillEmptyFrame(
         page_idx_t frameIdx, FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile) {
     vector<unique_ptr<Frame>> &bufferCache = fileHandle.isLargePaged() ? largePageBufferCache
                                                                        : defaultPageBufferCache;
+    size_t extraMemory = fileHandle.isLargePaged() ? LARGE_PAGE_SIZE : DEFAULT_PAGE_SIZE;
     auto& frame = bufferCache[frameIdx];
     if (!frame->acquireFrameLock(false)) {
         return false;
     }
     if (-1u == frame->pinCount.load()) {
         readNewPageIntoFrame(*frame, fileHandle, pageIdx, doNotReadFromFile);
+        currentMemory += extraMemory;
         frame->releaseFrameLock();
         return true;
     }
