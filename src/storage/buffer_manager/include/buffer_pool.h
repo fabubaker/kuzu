@@ -153,12 +153,15 @@ private:
 struct EvictionQueueNode {
     EvictionQueueNode() {}
 
-    EvictionQueueNode(Frame *frame, page_idx_t frameIdx, FileHandle *fileHandle)
-        : frame(frame), frameIdx(frameIdx), fileHandle(fileHandle) {}
+    EvictionQueueNode(Frame *frame, page_idx_t frameIdx, FileHandle *fileHandle, uint64_t timestamp)
+        : frame(frame), frameIdx(frameIdx), fileHandle(fileHandle), timestamp(timestamp) {}
 
     Frame* frame;
     page_idx_t frameIdx;
     FileHandle *fileHandle;
+    // Keeps track of when this node was inserted into the queue.
+    // Tracks frame->eviction_timestamp.
+    uint64_t timestamp;
 };
 
 // Implements an mmap-based buffer pool, as described here:
