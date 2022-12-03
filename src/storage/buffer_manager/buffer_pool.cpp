@@ -11,12 +11,12 @@ using namespace kuzu::common;
 namespace kuzu {
 namespace storage {
 
-Frame::Frame(uint64_t pageSize) : frameLock{ATOMIC_FLAG_INIT}, pageSize{pageSize} {
+Frame::Frame(uint64_t pageSize) : frameLock{ATOMIC_FLAG_INIT}, pageSize{pageSize}, eviction_timestamp(0) {
     resetFrameWithoutLock();
     buffer = make_unique<uint8_t[]>(pageSize);
 }
 
-Frame::Frame(uint64_t pageSize, uint8_t* buffer) : frameLock{ATOMIC_FLAG_INIT}, pageSize{pageSize} {
+Frame::Frame(uint64_t pageSize, uint8_t* buffer) : frameLock{ATOMIC_FLAG_INIT}, pageSize{pageSize}, eviction_timestamp(0) {
     resetFrameWithoutLock();
     mmapBuffer = buffer;
 }

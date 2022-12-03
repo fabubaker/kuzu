@@ -64,6 +64,8 @@ private:
     bool isDirty;
     unique_ptr<uint8_t[]> buffer;
     uint64_t pageSize;
+    // Timestamp at which this frame was last added to the eviction queue.
+    atomic<uint64_t> eviction_timestamp;
 
     // TODO: It seems non-trivial to implement a deleter for mmap-based buffers.
     // Wrap this in a unique_ptr later. This may not even be a problem since
