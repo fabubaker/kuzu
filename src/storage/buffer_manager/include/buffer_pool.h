@@ -40,6 +40,7 @@ struct BufferManagerMetrics {
 class Frame {
     friend class BufferPool;
     friend class BufferPoolMmap;
+    friend class EvictionQueueNode;
 
 public:
     explicit Frame(uint64_t pageSize);
@@ -218,6 +219,10 @@ private:
     void flushIfDirty(const unique_ptr<Frame>& frame);
 
     void removePageFromFrame(FileHandle& fileHandle, page_idx_t pageIdx, bool shouldFlush);
+
+    void addToEvictionQueue(Frame *frame, page_idx_t frameIdx, FileHandle *fileHandle);
+
+    void purgeQueue();
 private:
     shared_ptr<spdlog::logger> logger;
 

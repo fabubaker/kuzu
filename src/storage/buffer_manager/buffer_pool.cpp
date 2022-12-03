@@ -521,12 +521,19 @@ page_idx_t BufferPoolMmap::claimAFrame(FileHandle& fileHandle, page_idx_t pageId
                                                                       : defaultPageBufferCache;
     size_t extraMemory = fileHandle.isLargePaged() ? LARGE_PAGE_SIZE : DEFAULT_PAGE_SIZE;
 
+    purgeQueue();
+
     // Evict pages until there's enough memory
     EvictionQueueNode victim;
     while(currentMemory + extraMemory > maxMemory) {
         if (!evictionQueue->try_dequeue(victim)) {
             // There aren't frames that can be evicted to make space for extraMemory.
             throw BufferManagerException("Cannot find a frame to evict from.");
+        }
+
+        // The frame has been inserted further up the queue, move on
+        if (victim.timestamp != victim.frame->eviction_timestamp) {
+            continue;
         }
 
         auto pinCount = victim.frame->pinCount.load();
@@ -594,10 +601,41 @@ void BufferPoolMmap::unpin(FileHandle& fileHandle, page_idx_t pageIdx) {
 void BufferPoolMmap::unpinWithoutAcquiringPageLock(FileHandle& fileHandle, page_idx_t pageIdx) {
     vector<unique_ptr<Frame>> &bufferCache = fileHandle.isLargePaged() ? largePageBufferCache
                                                                        : defaultPageBufferCache;
-    auto& frame = bufferCache[fileHandle.getFrameIdx(pageIdx)];
+    page_idx_t frameIdx = fileHandle.getFrameIdx(pageIdx);
+    auto& frame = bufferCache[frameIdx];
     // `count` is the value of `pinCount` before sub.
     auto count = frame->pinCount.fetch_sub(1);
     assert(count >= 1);
+    if (count == 0) {
+        addToEvictionQueue(frame.get(), frameIdx, &fileHandle);
+    }
+}
+
+void BufferPoolMmap::addToEvictionQueue(Frame *frame, page_idx_t frameIdx, FileHandle *fileHandle) {
+    // This is the latest node that's tracking this frame, so increment eviction_timestamp
+    frame->eviction_timestamp++;
+    purgeQueue();
+    // enqueue uses move semantics
+    evictionQueue->enqueue(EvictionQueueNode(frame, frameIdx, fileHandle, frame->eviction_timestamp));
+}
+
+void BufferPoolMmap::purgeQueue() {
+    EvictionQueueNode node;
+    while (true) {
+        if (!evictionQueue->try_dequeue(node)) {
+            break;
+        }
+        auto pinCount = node.frame->pinCount.load();
+        if (pinCount == 0 && node.timestamp == node.frame->eviction_timestamp) {
+            // pinCount is still 0 && this node is the latest node keeping track of this frame,
+            // enqueue it back for eventual eviction
+            evictionQueue->enqueue(node);
+            break;
+        } else {
+            // Otherwise, throw it away
+            continue;
+        }
+    }
 }
 
 } // namespace storage
