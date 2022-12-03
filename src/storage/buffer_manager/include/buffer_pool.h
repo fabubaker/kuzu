@@ -149,9 +149,14 @@ private:
 
 // Eviction queue node
 struct EvictionQueueNode {
+    EvictionQueueNode() {}
+
+    EvictionQueueNode(Frame *frame, page_idx_t frameIdx, FileHandle *fileHandle)
+        : frame(frame), frameIdx(frameIdx), fileHandle(fileHandle) {}
+
+    Frame* frame;
     page_idx_t frameIdx;
     FileHandle *fileHandle;
-    page_idx_t pageIdx;
 };
 
 // Implements an mmap-based buffer pool, as described here:

@@ -519,20 +519,20 @@ page_idx_t BufferPoolMmap::claimAFrame(FileHandle& fileHandle, page_idx_t pageId
     size_t extraMemory = fileHandle.isLargePaged() ? LARGE_PAGE_SIZE : DEFAULT_PAGE_SIZE;
 
     // Evict pages until there's enough memory
-    EvictionQueueNode node;
+    EvictionQueueNode victim;
     while(currentMemory + extraMemory > maxMemory) {
-        if (!evictionQueue->try_dequeue(node)) {
+        if (!evictionQueue->try_dequeue(victim)) {
             // There aren't frames that can be evicted to make space for extraMemory.
             throw BufferManagerException("Cannot find a frame to evict from.");
         }
 
-        auto& frame = bufferCache[node.frameIdx];
-        auto pinCount = frame->pinCount.load();
+        auto pinCount = victim.frame->pinCount.load();
 
         // If the victim frame has the same pageSize as the requested frame, reuse it.
-        if (0u == pinCount && frame->pageSize == extraMemory) {
-            if (tryEvict(node.frameIdx, fileHandle, pageIdx, doNotReadFromFile)) {
-                return node.frameIdx;
+        if (0u == pinCount && victim.frame->pageSize == extraMemory) {
+            // Pass in requested frame's fileHandle to load page into frame
+            if (tryEvict(victim.frameIdx, fileHandle, pageIdx, doNotReadFromFile)) {
+                return victim.frameIdx;
             } else {
                 // Unable to evict this frame, keep going through the queue
                 continue;
@@ -542,7 +542,8 @@ page_idx_t BufferPoolMmap::claimAFrame(FileHandle& fileHandle, page_idx_t pageId
         // Different sizes, evict but don't reuse because of size mismatch
         if (0u == pinCount) {
             // pageIdx is -1u since we don't want a new page to be read into this frame
-            tryEvict(node.frameIdx, fileHandle, -1u, false);
+            // Pass in victim frame's fileHandle for correct frame eviction
+            tryEvict(victim.frameIdx, *victim.fileHandle, -1u, false);
             continue; // Keep going regardless of whether eviction was successful
         }
     }
