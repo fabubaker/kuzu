@@ -343,11 +343,14 @@ bool BufferPoolMmap::tryEvict(
     size_t extraMemory = fileHandle.isLargePaged() ? LARGE_PAGE_SIZE : DEFAULT_PAGE_SIZE;
 
     auto& frame = bufferCache[frameIdx];
-    if (frame->recentlyAccessed) {
-        frame->recentlyAccessed = false;
-        bmMetrics.numRecentlyAccessedWalkover += 1;
-        return false;
-    }
+
+// Checking recentlyAccessed for eviction queues will cause evictions to never happen.
+//    if (frame->recentlyAccessed) {
+//        frame->recentlyAccessed = false;
+//        bmMetrics.numRecentlyAccessedWalkover += 1;
+//        return false;
+//    }
+
     if (!frame->acquireFrameLock(false)) {
         return false;
     }
