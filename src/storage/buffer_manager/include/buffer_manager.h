@@ -75,10 +75,7 @@ public:
 
     inline uint8_t* pinWithoutAcquiringPageLock(
         FileHandle& fileHandle, page_idx_t pageIdx, bool doNotReadFromFile) {
-        return fileHandle.isLargePaged() ? bufferPoolLargePages->pinWithoutAcquiringPageLock(
-                                               fileHandle, pageIdx, doNotReadFromFile) :
-                                           bufferPoolDefaultPages->pinWithoutAcquiringPageLock(
-                                               fileHandle, pageIdx, doNotReadFromFile);
+        return bufferPoolMmap->pinWithoutAcquiringPageLock(fileHandle, pageIdx, doNotReadFromFile);
     }
 
     void setPinnedPageDirty(FileHandle& fileHandle, page_idx_t pageIdx);
@@ -86,9 +83,7 @@ public:
     // The function assumes that the requested page is already pinned.
     void unpin(FileHandle& fileHandle, page_idx_t pageIdx);
     inline void unpinWithoutAcquiringPageLock(FileHandle& fileHandle, page_idx_t pageIdx) {
-        return fileHandle.isLargePaged() ?
-                   bufferPoolLargePages->unpinWithoutAcquiringPageLock(fileHandle, pageIdx) :
-                   bufferPoolDefaultPages->unpinWithoutAcquiringPageLock(fileHandle, pageIdx);
+        return bufferPoolMmap->unpinWithoutAcquiringPageLock(fileHandle, pageIdx);
     }
 
     unique_ptr<nlohmann::json> debugInfo();
