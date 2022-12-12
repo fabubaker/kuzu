@@ -1,0 +1,15 @@
+-NAME q28
+-COMPARE_RESULT 1
+-QUERY MATCH(comment:Comment) RETURN comment.ID, count(comment.length) limit 5
+---- 5
+1030792151045|1
+1030792151046|1
+1030792151047|1
+618475290625|1
+618475290626|1
+
+
+
+
+
+
