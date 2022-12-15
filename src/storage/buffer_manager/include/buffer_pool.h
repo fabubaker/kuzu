@@ -240,6 +240,8 @@ private:
 
     atomic<size_t> currentMemory;
     atomic<size_t> maxMemory;
+
+    atomic<uint64_t> frameIdxStart;
 };
 
 } // namespace storage

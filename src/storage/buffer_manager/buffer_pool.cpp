@@ -307,7 +307,7 @@ BufferPoolMmap::BufferPoolMmap(uint64_t maxSize)
           numDefaultFrames((page_idx_t)(ceil((double)maxSize / (double)DEFAULT_PAGE_SIZE))),
           numLargeFrames((page_idx_t)(ceil((double)maxSize / (double)LARGE_PAGE_SIZE))),
           evictionQueue(make_unique<moodycamel::ConcurrentQueue<EvictionQueueNode>>()),
-          currentMemory(0), maxMemory(maxSize) {
+          currentMemory(0), maxMemory(maxSize), frameIdxStart(0) {
     // Call mmap to create two virtual memory regions for each of the two size classes.
     int prot = PROT_READ | PROT_WRITE;
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
@@ -560,12 +560,14 @@ page_idx_t BufferPoolMmap::claimAFrame(FileHandle& fileHandle, page_idx_t pageId
 
     // Go through bufferCache and find frame with pinCount == -1 to fill page with
     auto numFrames = fileHandle.isLargePaged() ? numLargeFrames : numDefaultFrames;
-    // Starting with frameIdx = 0 may be inefficient, since it is very likely that the
-    // first few frames are already taken.
-    for (auto frameIdx = 0u; frameIdx < numFrames; ++frameIdx) {
+    auto currFrameIdxStart = frameIdxStart.load();
+
+    for (auto frameNum = 0u; frameNum < numFrames; ++frameNum) {
+        auto frameIdx = (currFrameIdxStart + frameNum) % numFrames;
         auto pinCount = bufferCache[frameIdx]->pinCount.load();
 
         if (-1u == pinCount && fillEmptyFrame(frameIdx, fileHandle, pageIdx, doNotReadFromFile)) {
+            frameIdxStart.store(frameIdx);
             return frameIdx;
         }
     }
